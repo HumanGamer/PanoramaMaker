@@ -9,41 +9,24 @@
  */
 package sinamegapolis.panoramamaker;
 
-import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Random;
-
-import javax.imageio.ImageIO;
-
-import com.google.common.collect.ImmutableSet;
+import java.util.*;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiMainMenu;
-import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.renderer.VideoMode;
+import net.minecraft.client.renderer.texture.NativeImage;
 import net.minecraft.client.shader.Framebuffer;
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.ScreenShotHelper;
 import net.minecraft.util.text.*;
 import net.minecraft.util.text.event.ClickEvent;
-import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.ScreenshotEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent.Phase;
-import net.minecraftforge.fml.common.gameevent.TickEvent.RenderTickEvent;
-import net.minecraftforge.fml.relauncher.ReflectionHelper;
-import sinamegapolis.panoramamaker.PanoramaMaker;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 public class PanoramaScreenshotMaker {
     private static final DateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd_HH.mm.ss");
@@ -53,83 +36,18 @@ public class PanoramaScreenshotMaker {
     float rotationYaw, rotationPitch;
     int panoramaStep;
     boolean takingPanorama;
-    int currentWidth, currentHeight;
-    boolean overridenOnce;
+    int currentWidth, currentHeight, redBits = 8, greenBits = 8, blueBits = 8, refreshRate = 60;
 
-    boolean overrideMainMenu = PanoramaMakerConfig.overrideMainMenu;
     int panoramaSize = PanoramaMakerConfig.panoramaSize;
     boolean fullscreen = PanoramaMakerConfig.fullScreen;
-
-    @SubscribeEvent
-    public void loadMainMenu(GuiOpenEvent event) {
-        if(overrideMainMenu && !overridenOnce && event.getGui() instanceof GuiMainMenu) {
-            File mcDir = PanoramaMaker.configFile.getParentFile().getParentFile();
-            File panoramasDir = new File(mcDir, "/screenshots/panoramas");
-
-            List<File[]> validFiles = new ArrayList();
-
-            ImmutableSet<String> set = ImmutableSet.of("panorama_0.png", "panorama_1.png", "panorama_2.png", "panorama_3.png", "panorama_4.png", "panorama_5.png");
-
-            if(panoramasDir.exists()) {
-                File[] subDirs;
-
-                File mainMenu = new File(panoramasDir, "main_menu");
-                if(mainMenu.exists())
-                    subDirs = new File[] { mainMenu };
-                else subDirs = panoramasDir.listFiles((File f) -> f.isDirectory() && !f.getName().endsWith("fullres"));
-
-                for(File f : subDirs)
-                    if(set.stream().allMatch((String s) -> new File(f, s).exists()))
-                        validFiles.add(f.listFiles((File f1) -> set.contains(f1.getName())));
-            }
-
-            if(!validFiles.isEmpty()) {
-                File[] files = validFiles.get(new Random().nextInt(validFiles.size()));
-                Arrays.sort(files);
-
-                Minecraft mc = Minecraft.getMinecraft();
-                ResourceLocation[] resources = new ResourceLocation[6];
-
-                for(int i = 0; i < resources.length; i++) {
-                    File f = files[i];
-                    try {
-                        BufferedImage img = ImageIO.read(f);
-                        DynamicTexture tex = new DynamicTexture(img);
-                        String name = "panoramamaker:" + f.getName();
-
-                        resources[i] = mc.getTextureManager().getDynamicTextureLocation(name, tex);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        return;
-                    }
-                }
-
-                try {
-                    Field field = ReflectionHelper.findField(GuiMainMenu.class, "H", "field_73978_o", "TITLE_PANORAMA_PATHS" );
-                    field.setAccessible(true);
-
-                    if(Modifier.isFinal(field.getModifiers())) {
-                        Field modfield = Field.class.getDeclaredField("modifiers");
-                        modfield.setAccessible(true);
-                        modfield.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-                    }
-
-                    field.set(null, resources);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-
-            overridenOnce = true;
-        }
-    }
+    boolean isFullscreen;
 
     @SubscribeEvent
     public void takeScreenshot(ScreenshotEvent event) {
         if(takingPanorama)
             return;
 
-        if(GuiScreen.isCtrlKeyDown() && GuiScreen.isShiftKeyDown() && Minecraft.getMinecraft().currentScreen == null) {
+        if(Screen.hasControlDown() && Screen.hasShiftDown() && Minecraft.getInstance().currentScreen == null) {
             takingPanorama = true;
             panoramaStep = 0;
 
@@ -156,27 +74,38 @@ public class PanoramaScreenshotMaker {
 
             event.setCanceled(true);
 
-            ITextComponent panoramaDirComponent = new TextComponentString(currentDir.getName());
+            ITextComponent panoramaDirComponent = new StringTextComponent(currentDir.getName());
             panoramaDirComponent.getStyle().setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, currentDir.getAbsolutePath())).setUnderlined(true);
-            event.setResultMessage(new TextComponentTranslation("panoramamaker.panoramaSaved", panoramaDirComponent));
+            event.setResultMessage(new TranslationTextComponent("panoramamaker.panoramaSaved", panoramaDirComponent));
         }
     }
 
     @SubscribeEvent
-    public void renderTick(RenderTickEvent event) {
-        Minecraft mc = Minecraft.getMinecraft();
+    public void renderTick(TickEvent.RenderTickEvent event) {
+        Minecraft mc = Minecraft.getInstance();
 
         if(takingPanorama) {
-            if(event.phase == Phase.START) {
+            if(event.phase == TickEvent.Phase.START) {
                 if(panoramaStep == 0) {
                     mc.gameSettings.hideGUI = true;
-                    currentWidth = mc.displayWidth;
-                    currentHeight = mc.displayHeight;
+                    currentWidth = mc.mainWindow.getWidth();
+                    currentHeight = mc.mainWindow.getHeight();
+                    if (mc.mainWindow.getVideoMode().isPresent()) {
+                        redBits = mc.mainWindow.getVideoMode().get().getRedBits();
+                        greenBits = mc.mainWindow.getVideoMode().get().getGreenBits();
+                        blueBits = mc.mainWindow.getVideoMode().get().getBlueBits();
+                        refreshRate = mc.mainWindow.getVideoMode().get().getRefreshRate();
+                    }
                     rotationYaw = mc.player.rotationYaw;
                     rotationPitch = mc.player.rotationPitch;
 
-                    if(!fullscreen)
-                        mc.resize(panoramaSize, panoramaSize);
+
+                    if(!fullscreen) {
+                        isFullscreen = mc.mainWindow.isFullscreen();
+                        if (isFullscreen)
+                            mc.mainWindow.toggleFullscreen();
+                        resize(new VideoMode(panoramaSize, panoramaSize, redBits, greenBits, blueBits, refreshRate));
+                    }
                 }
 
                 switch(panoramaStep) {
@@ -209,7 +138,7 @@ public class PanoramaScreenshotMaker {
                 mc.player.prevRotationPitch = mc.player.rotationPitch;
             } else {
                 if(panoramaStep > 0)
-                    saveScreenshot(currentDir, "panorama_" + (panoramaStep - 1) + ".png", mc.displayWidth, mc.displayHeight, mc.getFramebuffer());
+                    saveScreenshot(currentDir, "panorama_" + (panoramaStep - 1) + ".png", mc.mainWindow.getWidth(), mc.mainWindow.getHeight(), mc.getFramebuffer());
                 panoramaStep++;
                 if(panoramaStep == 7) {
                     mc.gameSettings.hideGUI = false;
@@ -220,19 +149,37 @@ public class PanoramaScreenshotMaker {
                     mc.player.prevRotationYaw = mc.player.rotationYaw;
                     mc.player.prevRotationPitch = mc.player.rotationPitch;
 
-                    mc.resize(currentWidth, currentHeight);
+                    if (!fullscreen) {
+                        if (isFullscreen)
+                            mc.mainWindow.toggleFullscreen();
+                        resize(new VideoMode(currentWidth, currentHeight, redBits, greenBits, blueBits, refreshRate));
+                    }
                 }
             }
         }
     }
 
+    private static void resize(VideoMode mode)
+    {
+        Minecraft mc = Minecraft.getInstance();
+        mc.mainWindow.func_224797_a(Optional.of(mode));
+        mc.mainWindow.prevWindowWidth = mode.getWidth();
+        mc.mainWindow.prevWindowHeight = mode.getHeight();
+        mc.mainWindow.width = mode.getWidth();
+        mc.mainWindow.height = mode.getHeight();
+        mc.mainWindow.videoModeChanged = false;
+        mc.mainWindow.updateVideoMode();
+        mc.updateWindowSize();
+    }
+
     private static void saveScreenshot(File dir, String screenshotName, int width, int height, Framebuffer buffer) {
         try {
-            BufferedImage bufferedimage = ScreenShotHelper.createScreenshot(width, height, buffer);
+            NativeImage nativeImage = ScreenShotHelper.createScreenshot(width, height, buffer);
             File file2 = new File(dir, screenshotName);
 
-            net.minecraftforge.client.ForgeHooksClient.onScreenshot(bufferedimage, file2);
-            ImageIO.write(bufferedimage, "png", file2);
+            net.minecraftforge.client.ForgeHooksClient.onScreenshot(nativeImage, file2);
+            nativeImage.write(file2);
+
         } catch(Exception exception) { }
     }
 
@@ -243,8 +190,8 @@ public class PanoramaScreenshotMaker {
 
     @SubscribeEvent
     public void onEnteringWorld(EntityJoinWorldEvent event){
-        if(event.getEntity()instanceof EntityPlayer && event.getWorld().isRemote){
-            ((EntityPlayer) event.getEntity()).sendStatusMessage(new TextComponentTranslation("panoramamaker.enterWorld"), false);
+        if(event.getEntity()instanceof PlayerEntity && event.getWorld().isRemote){
+            ((PlayerEntity) event.getEntity()).sendStatusMessage(new TranslationTextComponent("panoramamaker.enterWorld"), false);
         }
     }
 }

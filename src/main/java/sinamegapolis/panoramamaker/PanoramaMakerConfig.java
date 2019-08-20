@@ -9,30 +9,15 @@
  */
 package sinamegapolis.panoramamaker;
 
-import net.minecraftforge.common.config.Config;
-import net.minecraftforge.common.config.ConfigManager;
-import net.minecraftforge.fml.client.event.ConfigChangedEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-@Mod.EventBusSubscriber(modid = PanoramaMaker.MODID)
-@Config(modid = PanoramaMaker.MODID)
+@Mod.EventBusSubscriber()
 public class PanoramaMakerConfig {
 
-    @Config.RequiresMcRestart
-    @Config.Comment("Use panorama screenshots on main menu")
-    public static boolean overrideMainMenu = true;
-
-    @Config.Comment("Fullres screenshots: Take panorama screenshots without changing the render size")
+    // Fullres screenshots: Take panorama screenshots without changing the render size
     public static boolean fullScreen = false;
 
-    @Config.Comment("Panorama Picture Resolution")
-    public static int panoramaSize = 256;
+    // Panorama Picture Resolution
+    public static int panoramaSize = 1024;
 
-    @SubscribeEvent
-    public static void onConfigChanged(ConfigChangedEvent.OnConfigChangedEvent event){
-        if(event.getModID().equals(PanoramaMaker.MODID)){
-            ConfigManager.sync(PanoramaMaker.MODID, Config.Type.INSTANCE);
-        }
-    }
 }

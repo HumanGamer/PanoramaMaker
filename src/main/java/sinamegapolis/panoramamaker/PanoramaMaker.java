@@ -10,35 +10,23 @@
 package sinamegapolis.panoramamaker;
 
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.event.FMLInitializationEvent;
-import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
-import java.io.File;
-
-@Mod(modid = PanoramaMaker.MODID, name = PanoramaMaker.NAME, version = PanoramaMaker.VERSION)
+@Mod("panoramamaker")
 public class PanoramaMaker {
-    public static final String MODID = "panoramamaker";
-    public static final String NAME = "PanoramaMaker";
-    public static final String VERSION = "1.0.0";
 
-    public static File configFile = null;
-
-    @Mod.EventHandler
-    public void preInit(FMLPreInitializationEvent e){
-      configFile = e.getSuggestedConfigurationFile();
-    }
-    @Mod.EventHandler
-	public void init(FMLInitializationEvent e) {
+    public PanoramaMaker()
+    {
+        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::setup);
         MinecraftForge.EVENT_BUS.register(this);
-        if(!Loader.isModLoaded("quark"))
-            MinecraftForge.EVENT_BUS.register(new PanoramaScreenshotMaker());
     }
 
-    @Mod.EventHandler
-	public void postInit(FMLPostInitializationEvent e) {
+	private void setup(final FMLCommonSetupEvent e) {
 
+        if(!ModList.get().isLoaded("quark"))
+            MinecraftForge.EVENT_BUS.register(new PanoramaScreenshotMaker());
     }
 }
